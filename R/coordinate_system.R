@@ -9,23 +9,35 @@
 CoordinateSystem <- R6::R6Class("CoordinateSystem",
   inherit = IdentifiedObject,
   private = list(
-    .axes = list()   # list of CoordinateSystemAxis
+    # List of CoordinateSystemAxis
+    .axes = list(),
+
+    # Top-level CRS identifier for the entire CS, always assumed to be compound.
+    .crs_id = ''
   ),
   public = list(
     #' @description Create a new coordinate system. The CS must have at least
-    #' one axis.
+    #'   one axis.
     #' @param name Character string. Name of the coordinate system.
     #' @param axes A `list` of instances of [CoordinateSystemAxis]. There must
-    #' be at least one axis in the list.
+    #'   be at least one axis in the list.
+    #' @param crs Optional, character string with the description of the CRS of
+    #'   this coordinate system, always assumed to be compound.
+    #' @param attributes Optional. A `list` of attributes of the coordinate
+    #'   system.
     #' @return An instance of `CoordinateSystem` or an error.
-    initialize = function(name, axes) {
-      super$initialize(name)
+    initialize = function(name, axes, crs = '', attributes = list()) {
+      # FIXME: Must check that the list of axes form a valid CS
+      super$initialize(name, attributes)
 
       if (is.list(axes) && length(axes) >= 1L &&
           all(sapply(axes, inherits, "CoordinateSystemAxis")))
         private$.axes <- axes
       else
         stop("Argument `axes` is not a list containing `CoordinateSystemAxis` instances.", call. = FALSE)
+
+      if (is.null(crs)) crs <- ''
+      private$.crs_id <- crs
     },
 
     #' @description Print a summary of the coordinate system to the console.
@@ -34,6 +46,7 @@ CoordinateSystem <- R6::R6Class("CoordinateSystem",
     print = function(...) {
       cat("<Coordinate System>\n")
       self$print_axes(...)
+      self$print_attributes()
       invisible(self)
     },
 
@@ -68,6 +81,14 @@ CoordinateSystem <- R6::R6Class("CoordinateSystem",
     axes = function(value) {
       if (missing(value))
         private$.axes
+    },
+
+    #' @field crs Set or retreive the CRS identifier of the coordinate system.
+    crs = function(value) {
+      if (missing(value))
+        private$.crs_id
+      else if (is.character(value))
+        private$.crs_id <- value[1L]
     }
   )
 )

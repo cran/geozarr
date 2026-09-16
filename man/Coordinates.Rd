@@ -17,6 +17,9 @@ The optional boundary values for numeric coordinate values that define the
 finite extent of each element in the coordinates are also managed by this
 class.
 }
+\section{Super class}{
+\code{\link[zarr:zarr_object]{zarr::zarr_object}} -> \code{Coordinates}
+}
 \section{Active bindings}{
   \if{html}{\out{<div class="r6-active-bindings">}}
   \describe{
@@ -30,8 +33,16 @@ of values.}
     \item{\code{raw}}{(read-only) Retrieve the coordinate values as stored, either a
 full vector or packed.}
 
-    \item{\code{bounds}}{(read-only) Retrieve the boundary values around
-coordinates.}
+    \item{\code{bounds}}{Set or retrieve the boundary values around coordinates.
+When setting, assign a matrix with 2 rows and as many columns as there
+are coordinates values. When retrieving, a matrix as just described or
+\code{NULL} if boundary values have not been set.}
+
+    \item{\code{bounds_raw}}{(read-only) Retrieve the boundary values around
+coordinates exactly as they are stored with the coordinate. If the
+boundary values are packed, a vector of length 2 is returned, otherwise
+a matrix with 2 rows and as many columns as there are coordinates
+values or \code{NULL} if boundary values have not been set.}
 
     \item{\code{range}}{(read-only) Retrieve the extreme values of the coordinates.}
 
@@ -40,6 +51,9 @@ the values are unpacked.}
 
     \item{\code{unit}}{Character string giving the unit-of-measure of the coordinate
 values.}
+
+    \item{\code{attributes}}{(read-only) A named \code{list} with the attributes of this
+object.}
   }
   \if{html}{\out{</div>}}
 }
@@ -59,6 +73,15 @@ values.}
     \item \href{#method-Coordinates-getRangeMeaning}{\code{Coordinates$getRangeMeaning()}}
   }
 }
+\if{html}{\out{<details open><summary>Inherited methods</summary>
+<ul>
+  <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_object" data-id="append_array_attribute"><a href='../../zarr/html/zarr_object.html#method-zarr_object-append_array_attribute'><code>zarr::zarr_object$append_array_attribute()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_object" data-id="attribute"><a href='../../zarr/html/zarr_object.html#method-zarr_object-attribute'><code>zarr::zarr_object$attribute()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_object" data-id="delete_attribute"><a href='../../zarr/html/zarr_object.html#method-zarr_object-delete_attribute'><code>zarr::zarr_object$delete_attribute()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_object" data-id="print_attributes"><a href='../../zarr/html/zarr_object.html#method-zarr_object-print_attributes'><code>zarr::zarr_object$print_attributes()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_object" data-id="set_attribute"><a href='../../zarr/html/zarr_object.html#method-zarr_object-set_attribute'><code>zarr::zarr_object$set_attribute()</code></a></span></li>
+</ul>
+</details>}}
 \if{html}{\out{<hr>}}
 \if{html}{\out{<a id="method-Coordinates-initialize"></a>}}
 \if{latex}{\out{\hypertarget{method-Coordinates-initialize}{}}}
@@ -67,7 +90,14 @@ values.}
 system axis.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{Coordinates$new(name, direction, unit, values, bounds = NULL)}
+    \preformatted{Coordinates$new(
+  name,
+  direction,
+  unit,
+  values,
+  bounds = NULL,
+  attributes = list()
+)}
     \if{html}{\out{</div>}}
   }
   \subsection{Arguments}{
@@ -75,20 +105,19 @@ system axis.
     \describe{
       \item{\code{name}}{Character string. Name of the coordinate set.}
       \item{\code{direction}}{Character string. Direction of the coordinates. Must be
-one from a set of values.}
+one from the set of values given in \code{AxisDirection}.}
       \item{\code{unit}}{Character string. Unit of measure of the coordinates.}
-      \item{\code{values}}{A vector of values. If argument \code{values_packed} is \code{TRUE}
-then there are two values: the initial coordinate value and the
-increment. Otherwise this is a vector of values.}
+      \item{\code{values}}{A vector of values.}
       \item{\code{bounds}}{Optional. If the boundaries are regularly spaced, a vector
 with the offset to the boundary lower and higher than the coordinate
-value, respectively. If the boundaries are irregularly spaced, a matrix
-with two rows and as many columns as there are elements, with the
-offset to the boundary below the coordinate value in row 1 and the
-offset to the boundary above the coordinate value in row 2. The
-boundaries represent the finite extent around the boundary value that
-this value is representative for. If this argument is not provided, the
-coordinate values are assumed to represent a point value.}
+value, respectively. Otherwise, a matrix with two rows and as many
+columns as there are elements, with the offset to the boundary below
+the coordinate value in row 1 and the offset to the boundary above the
+coordinate value in row 2. The boundaries represent the finite extent
+around the boundary value that this value is representative for. If
+this argument is not provided, the coordinate values are assumed to
+represent a point value.}
+      \item{\code{attributes}}{Optional. A \code{list} of attributes of the coordinates.}
     }
     \if{html}{\out{</div>}}
   }

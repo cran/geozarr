@@ -1,3 +1,12 @@
+# geozarr 0.2.0
+
+* Coordinate system elements can have attributes.
+* Exporting multiple objects for downstream package use.
+* Boundary values are written to the array metadata.
+* Better support for vertical axes.
+* Better support for CRS, boundary values and external arrays.
+* Bug fixes.
+
 # geozarr 0.1.0
 
 * Initial CRAN submission.

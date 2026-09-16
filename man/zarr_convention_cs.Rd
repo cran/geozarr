@@ -31,6 +31,8 @@ structure (simplified):
   "cs": \{
     "crs": [
       \{
+        "type": "compound" | "planar" | "vertical" | "temporal" | "undefined",
+        "description: "optional text",
         "axes": \{
           "<dimension_name>": \{
             "abbreviation": "X",
@@ -40,7 +42,9 @@ structure (simplified):
           \}
         \}
       \}
-    ]
+    ],
+    "id": "Identifier of a compound CRS",
+    "attributes": \{ <optional attributes as a JSON sub-schema> \}
   \}
 \}
 }\if{html}{\out{</div>}}
@@ -56,6 +60,9 @@ for inclusion as the "cs" attribute in the Zarr node metadata.
   \if{html}{\out{<div class="r6-active-bindings">}}
   \describe{
     \item{\code{name}}{Optional descriptive name for the coordinate set.}
+
+    \item{\code{cs_crs}}{Optional top-level CRS identifier, an instance of
+\link{zarr_conv_proj}.}
 
     \item{\code{crs}}{(read-only) The list of CRS objects accumulated so far.}
   }
@@ -110,7 +117,12 @@ separate OGC coordinate reference systems (e.g. a horizontal CRS plus a
 vertical CRS plus a temporal CRS).
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{zarr_convention_cs$add_crs(axes, name = NULL, id = NULL, geolocation = NULL)}
+    \preformatted{zarr_convention_cs$add_crs(
+  axes,
+  type = "unknown",
+  id = NULL,
+  geolocation = NULL
+)}
     \if{html}{\out{</div>}}
   }
   \subsection{Arguments}{
@@ -119,10 +131,10 @@ vertical CRS plus a temporal CRS).
       \item{\code{axes}}{A named list of axis definitions, keyed by the dimension name
 that appears in the Zarr array's \code{dimension_names} metadata. If the
 argument is \code{NULL} or an empty list, the call is a no-op.}
-      \item{\code{name}}{Optional character string. Descriptive name for the CRS.}
-      \item{\code{id}}{Optional. Convention \code{proj} attributes (\code{proj:code},
-\code{proj:wkt2}, or \code{proj:projjson}) providing the formal OGC description
-of the CRS.}
+      \item{\code{type}}{Optional, character string. Type of CRS, one of "compound",
+"planar", "vertical", "temporal", "unknown" (default).}
+      \item{\code{id}}{Optional. An instance of \link{zarr_conv_proj} providing the formal
+OGC description of the CRS.}
       \item{\code{geolocation}}{Optional list. Geolocation grid definition for
 curvilinear grids. This should only be included for CRS's that
 represent a planar coordinate system.}
@@ -190,7 +202,8 @@ by Coordinates" (e.g. \code{"EAST"}, \code{"NORTH"}, \code{"UP"}, \code{"FUTURE"
   unit = NULL,
   boundaries = NULL,
   parametric = NULL,
-  time = NULL
+  time = NULL,
+  attributes = NULL
 )}
     \if{html}{\out{</div>}}
   }
@@ -208,6 +221,7 @@ coordinates.}
       \item{\code{parametric}}{Optional parametric definition produced by
 \code{parametric()}.}
       \item{\code{time}}{Optional time definition produced by \code{time()}.}
+      \item{\code{attributes}}{Optional list with attributes for the coordinates.}
     }
     \if{html}{\out{</div>}}
   }
@@ -297,10 +311,8 @@ arrays in the same local store.}
 
 The two values give the offset \emph{below} and \emph{above} the coordinate value
 that define the extent of each cell, in the same unit as the
-coordinates. Both offsets are expressed as positive magnitudes; the
-convention interprets "below" as the lower-valued boundary and "above"
-as the higher-valued boundary regardless of the sign of the axis
-increment.
+coordinates. Both offsets are expressed relative to the coordinate value
+so \code{below} must be non-positive and \code{above} must be non-negative.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
     \preformatted{zarr_convention_cs$boundaries_regular(below, above)}
@@ -309,7 +321,7 @@ increment.
   \subsection{Arguments}{
     \if{html}{\out{<div class="arguments">}}
     \describe{
-      \item{\code{below, above}}{Numeric. Positive offset from the coordinate value to
+      \item{\code{below, above}}{Numeric. Offset from the coordinate value to
 the lower and upper boundary, respectively.}
     }
     \if{html}{\out{</div>}}

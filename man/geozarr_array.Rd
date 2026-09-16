@@ -10,7 +10,7 @@ regular Zarr array but it has attributes and/or associated Zarr arrays that
 provide a coordinate system for the array.
 }
 \section{Super classes}{
-\code{\link[zarr:zarr_node]{zarr::zarr_node}} -> \code{\link[zarr:zarr_array]{zarr::zarr_array}} -> \code{geozarr_array}
+\code{\link[zarr:zarr_object]{zarr::zarr_object}} -> \code{\link[zarr:zarr_node]{zarr::zarr_node}} -> \code{\link[zarr:zarr_array]{zarr::zarr_array}} -> \code{geozarr_array}
 }
 \section{Active bindings}{
   \if{html}{\out{<div class="r6-active-bindings">}}
@@ -27,22 +27,26 @@ this array.}
     \item \href{#method-geozarr_array-post_open}{\code{geozarr_array$post_open()}}
     \item \href{#method-geozarr_array-build_coordsys}{\code{geozarr_array$build_coordsys()}}
     \item \href{#method-geozarr_array-subset}{\code{geozarr_array$subset()}}
+    \item \href{#method-geozarr_array-write_external_coordinates}{\code{geozarr_array$write_external_coordinates()}}
   }
 }
 \if{html}{\out{<details><summary>Inherited methods</summary>
 <ul>
+  <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_object" data-id="print_attributes"><a href='../../zarr/html/zarr_object.html#method-zarr_object-print_attributes'><code>zarr::zarr_object$print_attributes()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_node" data-id="absolute_path"><a href='../../zarr/html/zarr_node.html#method-zarr_node-absolute_path'><code>zarr::zarr_node$absolute_path()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_node" data-id="append_array_attribute"><a href='../../zarr/html/zarr_node.html#method-zarr_node-append_array_attribute'><code>zarr::zarr_node$append_array_attribute()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_node" data-id="attribute"><a href='../../zarr/html/zarr_node.html#method-zarr_node-attribute'><code>zarr::zarr_node$attribute()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_node" data-id="delete_attribute"><a href='../../zarr/html/zarr_node.html#method-zarr_node-delete_attribute'><code>zarr::zarr_node$delete_attribute()</code></a></span></li>
-  <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_node" data-id="print_attributes"><a href='../../zarr/html/zarr_node.html#method-zarr_node-print_attributes'><code>zarr::zarr_node$print_attributes()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_node" data-id="relative_path"><a href='../../zarr/html/zarr_node.html#method-zarr_node-relative_path'><code>zarr::zarr_node$relative_path()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_node" data-id="save"><a href='../../zarr/html/zarr_node.html#method-zarr_node-save'><code>zarr::zarr_node$save()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_node" data-id="set_attribute"><a href='../../zarr/html/zarr_node.html#method-zarr_node-set_attribute'><code>zarr::zarr_node$set_attribute()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_node" data-id="walk_path"><a href='../../zarr/html/zarr_node.html#method-zarr_node-walk_path'><code>zarr::zarr_node$walk_path()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_array" data-id="flush"><a href='../../zarr/html/zarr_array.html#method-zarr_array-flush'><code>zarr::zarr_array$flush()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_array" data-id="hierarchy_nodes"><a href='../../zarr/html/zarr_array.html#method-zarr_array-hierarchy_nodes'><code>zarr::zarr_array$hierarchy_nodes()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_array" data-id="print"><a href='../../zarr/html/zarr_array.html#method-zarr_array-print'><code>zarr::zarr_array$print()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_array" data-id="promote"><a href='../../zarr/html/zarr_array.html#method-zarr_array-promote'><code>zarr::zarr_array$promote()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_array" data-id="read"><a href='../../zarr/html/zarr_array.html#method-zarr_array-read'><code>zarr::zarr_array$read()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_array" data-id="resize"><a href='../../zarr/html/zarr_array.html#method-zarr_array-resize'><code>zarr::zarr_array$resize()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_array" data-id="write"><a href='../../zarr/html/zarr_array.html#method-zarr_array-write'><code>zarr::zarr_array$write()</code></a></span></li>
 </ul>
 </details>}}
@@ -200,6 +204,25 @@ the \code{zarr} object that is newly created and which contains the
 \code{geozarr_array} instance, or an error if the \code{zarr} object could not be
 created. If one or more of the selectors in the \code{...} argument fall
 entirely outside of the range of the axis \code{NULL} is returned.
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-geozarr_array-write_external_coordinates"></a>}}
+\if{latex}{\out{\hypertarget{method-geozarr_array-write_external_coordinates}{}}}
+\subsection{\code{geozarr_array$write_external_coordinates()}}{
+  Write any external coordinates of this array to the
+underlying Zarr store. The metadata of this array is scanned for \code{ref}
+objects in the \code{cs} convention attributes. The values of the external
+coordinates are taken from the \link{CoordinateSystem} instance of this
+array.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{geozarr_array$write_external_coordinates()}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    Self, invisibly.
   }
 }
 
