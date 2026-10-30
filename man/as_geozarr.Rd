@@ -20,23 +20,18 @@ system where to persist the data. If the argument is a \code{zarr_group},
 argument \code{name} must be provided. If the argument gives the location for a
 new Zarr store then the location must be writable by the calling code. As
 per the Zarr specification, it is recommended to use a location that ends
-in ".zarr" when providing a location for a new store. If argument \code{name} is
-given then the \code{geozarr_array} will be created in the root of the \code{zarr}
-store with that name. If the \code{name} argument is not given, a single-array
-Zarr store will be created. If the \code{location} argument is not given, a
-\code{zarr} object is created in memory.}
+in ".zarr" when providing a location for a new store. If the \code{location}
+argument is not given, a \code{zarr} object is created in memory.}
 
-\item{registration}{Either "pixel" (the default) or "node". Pixel
-registration interprets the coordinates in the "dimnames" of argument \code{x}
-as being the upper-left corner of each grid cell. Node registration
-interprets them as the centers of grid cells. In both cases the elements in
-the array are assumed to represent an area.}
+\item{registration}{Optional, for the "spatial" convention only. Either
+"pixel" (the default) or "node". Pixel registration records the coordinates
+of the upper-left corner of each grid cell. Node registration records the
+centers of grid cells. In both cases the elements in the array are assumed
+to represent an area and the coordinate is located in the center of the
+grid cell.}
 }
 \value{
-If the \code{location} argument is a \code{zarr_group}, the new \code{geozarr_array}
-instance is returned. Otherwise, the \code{zarr} object that is newly created
-and which contains the GeoZarr array in the root group, or an error if the
-\code{zarr} object could not be created.
+The new \code{geozarr_array}.
 }
 \description{
 This function creates a GeoZarr object from an R matrix or array. A GeoZarr
@@ -74,6 +69,6 @@ object from R objects.
 \examples{
 x <- array(1:400, c(5, 20, 4))
 dimnames(x) <- list(x = 100000 + 0:4 * 10000, y = 19:0 * 5000, cls = letters[1:4])
-z <- as_geozarr(x, "my_data")
-z
+arr <- as_geozarr(x, "my_data")
+arr
 }

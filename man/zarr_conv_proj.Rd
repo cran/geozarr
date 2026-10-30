@@ -9,8 +9,8 @@ This class implements the GeoZarr "proj" convention. In
 particular, the following convention is implemented here:
 
 \if{html}{\out{<div class="sourceCode r">}}\preformatted{\{
-  "schema_url": "https://raw.githubusercontent.com/zarr-conventions/geo-proj/refs/tags/v1/schema.json",
-  "spec_url": "https://github.com/zarr-conventions/geo-proj/blob/v1/README.md",
+  "schema_url": "https://raw.githubusercontent.com/zarr-conventions/proj/refs/tags/v0.1/schema.json",
+  "spec_url": "https://github.com/zarr-conventions/proj/blob/v0.1/README.md",
   "uuid": "f17cb550-5864-4468-aeb7-f3180cfb622f",
   "name": "proj",
   "description": "Coordinate reference system information for geospatial data"
@@ -38,12 +38,11 @@ a CRS in PROJJSON format.}
 \subsection{Public methods}{
   \itemize{
     \item \href{#method-zarr_conv_proj-initialize}{\code{zarr_conv_proj$new()}}
-    \item \href{#method-zarr_conv_proj-write}{\code{zarr_conv_proj$write()}}
+    \item \href{#method-zarr_conv_proj-as_list}{\code{zarr_conv_proj$as_list()}}
   }
 }
 \if{html}{\out{<details open><summary>Inherited methods</summary>
 <ul>
-  <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_convention" data-id="as_list"><a href='../../zarr/html/zarr_convention.html#method-zarr_convention-as_list'><code>zarr::zarr_convention$as_list()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_convention" data-id="clear"><a href='../../zarr/html/zarr_convention.html#method-zarr_convention-clear'><code>zarr::zarr_convention$clear()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_convention" data-id="register"><a href='../../zarr/html/zarr_convention.html#method-zarr_convention-register'><code>zarr::zarr_convention$register()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_convention" data-id="set"><a href='../../zarr/html/zarr_convention.html#method-zarr_convention-set'><code>zarr::zarr_convention$set()</code></a></span></li>
@@ -74,26 +73,17 @@ attributes. The elements in the list must be one or more of "code",
 }
 
 \if{html}{\out{<hr>}}
-\if{html}{\out{<a id="method-zarr_conv_proj-write"></a>}}
-\if{latex}{\out{\hypertarget{method-zarr_conv_proj-write}{}}}
-\subsection{\code{zarr_conv_proj$write()}}{
-  Write the data of this instance in the attributes of a Zarr
-object.
+\if{html}{\out{<a id="method-zarr_conv_proj-as_list"></a>}}
+\if{latex}{\out{\hypertarget{method-zarr_conv_proj-as_list}{}}}
+\subsection{\code{zarr_conv_proj$as_list()}}{
+  Retrieve the data of this instance as a \code{list}.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{zarr_conv_proj$write(attributes)}
-    \if{html}{\out{</div>}}
-  }
-  \subsection{Arguments}{
-    \if{html}{\out{<div class="arguments">}}
-    \describe{
-      \item{\code{attributes}}{A \code{list} with Zarr attributes for a group or array. The
-properties will be written at the root level of \code{attributes}.}
-    }
+    \preformatted{zarr_conv_proj$as_list()}
     \if{html}{\out{</div>}}
   }
   \subsection{Returns}{
-    The updated attributes.
+    A \code{list} with the attributes of this convention.
   }
 }
 

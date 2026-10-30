@@ -41,6 +41,8 @@ this array.}
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_node" data-id="save"><a href='../../zarr/html/zarr_node.html#method-zarr_node-save'><code>zarr::zarr_node$save()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_node" data-id="set_attribute"><a href='../../zarr/html/zarr_node.html#method-zarr_node-set_attribute'><code>zarr::zarr_node$set_attribute()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_node" data-id="walk_path"><a href='../../zarr/html/zarr_node.html#method-zarr_node-walk_path'><code>zarr::zarr_node$walk_path()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_array" data-id="copy_to"><a href='../../zarr/html/zarr_array.html#method-zarr_array-copy_to'><code>zarr::zarr_array$copy_to()</code></a></span></li>
+  <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_array" data-id="details"><a href='../../zarr/html/zarr_array.html#method-zarr_array-details'><code>zarr::zarr_array$details()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_array" data-id="flush"><a href='../../zarr/html/zarr_array.html#method-zarr_array-flush'><code>zarr::zarr_array$flush()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_array" data-id="hierarchy_nodes"><a href='../../zarr/html/zarr_array.html#method-zarr_array-hierarchy_nodes'><code>zarr::zarr_array$hierarchy_nodes()</code></a></span></li>
   <li><span class="pkg-link" data-pkg="zarr" data-topic="zarr_array" data-id="print"><a href='../../zarr/html/zarr_array.html#method-zarr_array-print'><code>zarr::zarr_array$print()</code></a></span></li>
@@ -57,7 +59,7 @@ this array.}
   Initialize a new GeoZarr array.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{geozarr_array$new(name, metadata, parent, store, coord_sys)}
+    \preformatted{geozarr_array$new(name, metadata, parent, coord_sys)}
     \if{html}{\out{</div>}}
   }
   \subsection{Arguments}{
@@ -66,8 +68,8 @@ this array.}
       \item{\code{name}}{The name of the GeoZarr array.}
       \item{\code{metadata}}{List with the metadata of the array.}
       \item{\code{parent}}{The parent \code{zarr_group} instance of this new array, can be
-missing or \code{NULL} if the Zarr object should have just this array.}
-      \item{\code{store}}{The \link[zarr:zarr_store]{zarr_store} instance to persist data in.}
+can be a \code{zarr} instance if the Zarr object should have just this
+array.}
       \item{\code{coord_sys}}{Optional, an instance of \link{CoordinateSystem} providing
 the coordinate system of the array. If not provided, the coordinate
 system is constructed from the metadata of the array persisted in the
@@ -123,12 +125,7 @@ array, with the range along each axis to extract expressed in
 coordinate values of the domain of each axis.
   \subsection{Usage}{
     \if{html}{\out{<div class="r">}}
-    \preformatted{geozarr_array$subset(
-  ...,
-  .name = NULL,
-  .location = NULL,
-  .rightmost.closed = FALSE
-)}
+    \preformatted{geozarr_array$subset(..., .name = NULL, .location = NULL)}
     \if{html}{\out{</div>}}
   }
   \subsection{Arguments}{
@@ -142,7 +139,9 @@ case-sensitive and can be specified in any order. If values for the
 range per axis fall outside of the extent of the axis, the range is
 clipped to the extent of the axis.}
       \item{\code{.name}}{The name of the GeoZarr array to be created. If omitted, an
-array will be created at the root of a new in-memory Zarr store.}
+array will be created at the root of a new in-memory Zarr store. The
+new array can then not have any associated arrays, such as for
+irregular coordinate values or boundaries.}
       \item{\code{.location}}{Optional. If supplied, either an existing \link[zarr:zarr_group]{zarr_group}
 in a \link[zarr:zarr]{zarr} object, or a character string giving the location on a
 local file system where to persist the data. If the argument is a
@@ -150,13 +149,8 @@ local file system where to persist the data. If the argument is a
 the location for a new Zarr store then the location must be writable by
 the calling code. As per the Zarr specification, it is recommended to
 use a location that ends in ".zarr" when providing a location for a new
-store. If argument \code{.name} is given then the \code{geozarr_array} will be
-created in the root of the \code{zarr} store with that name. If the \code{.name}
-argument is not given, a single-array Zarr store will be created. If
-the \code{location} argument is not given, a \code{zarr} object is created in
-memory.}
-      \item{\code{.rightmost.closed}}{Optional. Single logical value to indicate if
-the upper boundary of range in each axis should be included.}
+store. If the \code{.location} argument is not given, a \code{zarr} object is
+created in memory.}
     }
     \if{html}{\out{</div>}}
   }
@@ -197,13 +191,10 @@ the key is that the specification in argument \code{...} uses the same
 domain of values as the respective axes in \code{x} use.
   }
   \subsection{Returns}{
-    If the \code{.location} argument is a \code{zarr_group}, the new Zarr
-\code{geozarr_array} is returned, with a subset of data from this GeoZarr
-array, having the axes and attributes of this GeoZarr array. Otherwise,
-the \code{zarr} object that is newly created and which contains the
-\code{geozarr_array} instance, or an error if the \code{zarr} object could not be
-created. If one or more of the selectors in the \code{...} argument fall
-entirely outside of the range of the axis \code{NULL} is returned.
+    The new \code{geozarr_array}, with a subset of data from this GeoZarr
+array, having the axes and attributes of this GeoZarr array. If one or
+more of the selectors in the \code{...} argument fall entirely outside of
+the range of the axis \code{NULL} is returned.
   }
 }
 

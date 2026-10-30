@@ -52,13 +52,36 @@ CoordinateSystemAxis <- R6::R6Class('CoordinateSystemAxis',
     #' @param ... Ignored.
     #' @return Self, invisible.
     print = function(...) {
-      cat('<Axis> ', private$.name, '\n', sep = '')
-      cat('Abbreviation :', if (nzchar(private$.abbreviation)) private$.abbreviation else '-', '\n')
-      cat('Length       :', private$.active_coordinates$length, '\n')
-      cat('Coordinates  :\n')
-      coords <- do.call(rbind, lapply(private$.coordinates, function(crd) crd$brief()))
-      if (nrow(coords) == 1L) coords$name <- NULL
-      print(.slim.data.frame(coords, ...), right = FALSE, row.names = FALSE)
+      coords <- private$.active_coordinates
+      all_coords <- do.call(rbind, lapply(private$.coordinates, function(crd) crd$brief()))
+      if (nrow(all_coords) == 1L) all_coords$name <- NULL
+
+      thm <- zarr::zarr_options('zarr_theme')
+      if (is.list(thm)) {
+        this_div <- cli::cli_div(theme = thm)
+        cli::cli_h1('Axis {.array {private$.name}}')
+        cli::cli_alert_info('{.label Abbreviation :} {.text {if (nzchar(private$.abbreviation)) private$.abbreviation else "-"}}')
+        if (inherits(coords, "CoordinatesTime")) {
+          cli::cli_alert_info('{.label Calendar     :} {.text {coords$time$calendar$name}}')
+          cli::cli_alert_info('{.label Epoch        :} {.text {paste0(coords$time$calendar$origin_date, "T", coords$time$calendar$origin_time)}}')
+        }
+        cli::cli_alert_info('{.label Coordinates  :} {.text {coords$length}}')
+        lines <- capture.output(print(.slim.data.frame(all_coords, ...), right = FALSE, row.names = FALSE))
+        lines[1L]  <- cli::format_inline('{.label {lines[1L]}}')
+        lines[-1L] <- vapply(lines[-1L], function(l) cli::format_inline('{.text {l}}'), '', USE.NAMES = FALSE)
+        cli::cli_verbatim(lines)
+        cli::cli_end(this_div)
+      } else {
+        cat('<Axis> ', private$.name, '\n', sep = '')
+        cat('Abbreviation :', if (nzchar(private$.abbreviation)) private$.abbreviation else '-', '\n')
+        if (inherits(coords, "CoordinatesTime")) {
+          cat('Calendar     :', coords$time$calendar$name, '\n')
+          cat('Epoch        :', paste0(coords$time$calendar$origin_date, "T",
+                                       coords$time$calendar$origin_time), '\n')
+        }
+        cat('Coordinates  : ', coords$length, '\n', sep = '')
+        print(.slim.data.frame(all_coords, ...), right = FALSE, row.names = FALSE)
+      }
       if (length(private$.attributes)) self$print_attributes()
       else private$.active_coordinates$print_attributes()
       invisible(self)
@@ -79,12 +102,12 @@ CoordinateSystemAxis <- R6::R6Class('CoordinateSystemAxis',
         vals <- paste0('[', vals[1L], ' ... ', vals[2L], ']')
       }
 
-      unit <- private$.active_coordinates$getUnit()
+      unit <- private$.active_coordinates$unit
       if (!nzchar(unit)) unit <- '-'
 
       data.frame(abbr = private$.abbreviation,
                  name = self$name,
-                 direction = private$.active_coordinates$getDirection(),
+                 direction = private$.active_coordinates$direction,
                  length = private$.active_coordinates$length,
                  values = vals,
                  unit = unit)
@@ -130,48 +153,6 @@ CoordinateSystemAxis <- R6::R6Class('CoordinateSystemAxis',
     #'   the range of coordinates.
     slice = function(rng) {
       private$.active_coordinates$slice(rng)
-    },
-
-    #' @description Retrieve the abbreviation of the axis. This method is
-    #'   mandatory in the OGC standard.
-    #' @return Character string with the abbreviation of the axis.
-    getAbbreviation = function() {
-      private$.abbreviation
-    },
-
-    #' @description Retrieve the direction of the axis. This method is
-    #'   mandatory in the OGC standard.
-    #' @return Character string with the direction of the axis.
-    getDirection = function() {
-      private$.direction
-    },
-
-    #' @description Retrieve the unit of measure of the axis. This method is
-    #'   mandatory in the OGC standard.
-    #' @return Character string with the unit of measure of the axis.
-    getUnit = function() {
-      private$.unit
-    },
-
-    #' @description Retrieve the minimum coordinate value of this axis, in units
-    #' of the unit of measure of the axis.
-    #' @return Negative infinity.
-    getMinimumValue = function() {
-      -Inf
-    },
-
-    #' @description Retrieve the maximum coordinate value of this axis, in units
-    #' of the unit of measure of the axis.
-    #' @return Positive infinity.
-    getMaximumValue = function() {
-      +Inf
-    },
-
-    #' @description Retrieve the minimum coordinate value of this axis, in units
-    #' of the unit of measure of the axis.
-    #' @return The character string 'EXACT'.
-    getRangeMeaning = function() {
-      'EXACT'
     }
   ),
   active = list(
