@@ -79,8 +79,10 @@ zarr_domain_geozarr <- R6::R6Class('zarr_domain_geozarr',
     #' @description This method will create a `geozarr_array` for an array node
     #'   and a `geozarr_group` for a group node with GeoZarr conventions
     #'   declared in its attributes. Either the "spatial" or "cs" convention
-    #'   has to be declared or the Zarr store has to be formatted using XArray
-    #'   or this domain will decline to manage the node.
+    #'   has to be declared, or "multiscales" for a group, or the array has to
+    #'   be in a level of a multiscales group that uses the "spatial"
+    #'   convention, or the Zarr store has to be formatted using XArray, or
+    #'   this domain will decline to manage the node.
     #' @param name The name of the node.
     #' @param metadata List with the metadata of the node.
     #' @param parent The parent node of this new node. May be `NULL` for a root
@@ -88,6 +90,10 @@ zarr_domain_geozarr <- R6::R6Class('zarr_domain_geozarr',
     #' @return A `geozarr_array` or `geozarr_group` instance if supported,
     #'   `FALSE` otherwise.
     build = function(name, metadata, parent) {
+      # Array in a level of a multiscales group using the `spatial` convention
+      if (!is.null(.multiscales_spatial(name, metadata, parent)))
+        return(geozarr_array$new(name, metadata, parent))
+
       conv <- metadata$attributes$zarr_conventions
       if (is.null(conv)) {
         # Check for XArray
@@ -107,6 +113,10 @@ zarr_domain_geozarr <- R6::R6Class('zarr_domain_geozarr',
         else
           return(geozarr_group$new(name, metadata, parent))
       }
+
+      # A group holding a multiscales layout
+      if (metadata$node_type == 'group' && 'multiscales' %in% matched)
+        return(geozarr_group$new(name, metadata, parent))
 
       # `spatial` convention: array may use parent attributes
       if (metadata$node_type == 'array' && inherits(parent, 'geozarr_group') &&
@@ -139,9 +149,13 @@ zarr_domain_geozarr <- R6::R6Class('zarr_domain_geozarr',
 #' @param ... Optional argument specific to the conventions. Currently supported
 #'   arguments are "external_group": the path to the group, relative to the
 #'   location of the array, that stores any external arrays with coordinate
-#'   values, default is ".." (the same group as the array); and "registration":
-#'   the registration point of the array for use with the "spatial" convention,
-#'   default is "pixel".
+#'   values, default is ".." (the same group as the array); "geolocation_group":
+#'   the path to the group, relative to the location of the array, where
+#'   geolocation data set with `CoordinateSystem$set_geolocation()` is to be
+#'   stored, default is the value of "external_group"; and "registration": the
+#'   registration point of the array for use with the "spatial" convention,
+#'   default is "pixel". The groups for external arrays must exist when the
+#'   arrays are written.
 #' @return A `list` with the metadata updated with convention attributes.
 #' @export
 #' @examples
@@ -172,10 +186,13 @@ set_convention <- function(metadata, coord_sys, crs = NULL, ...) {
     atts <- atts[!startsWith(names(atts), 'spatial:')] # Drop any old spatial elements
     atts <- atts[!startsWith(names(atts), 'proj:')]    # Drop any old proj elements
     atts$cs <- NULL # Remove any previous cs information
+    atts$geolocation <- NULL
   }
+  geo <- .geolocation_refs(coord_sys, additional$geolocation_group %||% additional$external_group %||% '..')
 
-  # dimension_names
-  meta <- append(meta, list(dimension_names = vapply(axes, function(ax) ax$name, character(1L), USE.NAMES = FALSE)))
+  # dimension_names, axes associated with dimensions only
+  axis_names <- vapply(axes, function(ax) ax$name, character(1L), USE.NAMES = FALSE)
+  meta <- append(meta, list(dimension_names = axis_names[1L:length(meta$shape)]))
 
   # Axis abbreviation
   ax_abbr <- vapply(axes, function(ax) ax$abbreviation, FUN.VALUE = character(1), USE.NAMES = FALSE)
@@ -220,6 +237,11 @@ set_convention <- function(metadata, coord_sys, crs = NULL, ...) {
         atts <- c(atts, proj$as_list())
       } else
         stop('Argument `crs` when provided must be a `list` with formatted CRS elements', call. = FALSE)    }
+
+    if (!is.null(geo)) {
+      atts <- geo$register(atts)
+      atts$geolocation <- geo$as_list()
+    }
   } else {
     # cs convention
     cs_conv <- zarr_convention_cs$new()
@@ -229,55 +251,72 @@ set_convention <- function(metadata, coord_sys, crs = NULL, ...) {
     cs_direction <- c(X = 'EAST', Y = 'NORTH', Z = 'UP', T = 'FUTURE', OTHER = 'OTHER')
 
     has_external <- FALSE
-    axis_defs <- lapply(axes, function(ax) {
+    # Encode one set of coordinates. External arrays are named after the set
+    # name `ext`, with suffix `_bounds` for the boundary values. The actual
+    # writing to the external arrays should be done in the calling code.
+    coords_def <- function(crd, ext, name = NULL) {
       # Values
-      values <- ax$coordinates$raw
+      values <- crd$raw
 
-      packed <- if (inherits(ax$coordinates, 'CoordinatesTime')) {
+      packed <- if (inherits(crd, 'CoordinatesTime')) {
         # Time coordinates are always held in unpacked form so must check if they are regular
         if (.is_regular(values)) {
           values <- c(values[1L], values[2L] - values[1L])
           TRUE
         } else FALSE
-      } else inherits(ax$coordinates, 'CoordinatesPacked')
+      } else inherits(crd, 'CoordinatesPacked')
 
       values_def <- if (packed)
         cs_conv$values_regular(values[1L], values[2L])
-      else if (ax$length <= GeoZarr.options$max_explicit)
+      else if (crd$length <= GeoZarr.options$max_explicit)
         cs_conv$values_explicit(values)
       else {
-        # External coordinate values: Write coordinate values to an external array.
-        # The name of the external array is the same as the name of the axis. The
-        # actual writing to the external array should be done in the calling code.
         has_external <<- TRUE
-        cs_conv$values_external(paste0(additional$external_group %||% '..', '/', ax$name))
+        cs_conv$values_external(paste0(additional$external_group %||% '..', '/', ext))
       }
 
       # Boundary values
-      bnds <- ax$coordinates$bounds_raw
+      bnds <- crd$bounds_raw
       bnds_def <- if (is.vector(bnds))
         cs_conv$boundaries_regular(bnds[1L], bnds[2L])
       else if (is.matrix(bnds))
-        # External boundary values: Write boundary values to an external array.
-        # The name of the external array is `<axis_name>_bounds`. The
-        # actual writing to the external array should be done in the calling code.
-        cs_conv$values_external(paste0(additional$external_group %||% '..', '/', paste0(ax$name, '_bounds')))
+        cs_conv$values_external(paste0(additional$external_group %||% '..', '/', paste0(ext, '_bounds')))
       else NULL
 
       # Time
-      time_def <- if (inherits(ax$coordinates, 'CoordinatesTime')) {
-        def <- strsplit(ax$coordinates$time$calendar$definition, ' ', fixed = TRUE)[[1L]]
-        cs_conv$time(unit = def[1L], epoch = def[3L], calendar = ax$coordinates$time$calendar$name)
+      time_def <- if (inherits(crd, 'CoordinatesTime')) {
+        def <- strsplit(crd$time$calendar$definition, ' ', fixed = TRUE)[[1L]]
+        cs_conv$time(unit = def[1L], epoch = def[3L], calendar = crd$time$calendar$name)
       } else NULL
 
-      # Coordinates and axis
-      coords_def <- cs_conv$coordinates(values_def, unit = ax$coordinates$unit,
-                                        boundaries = bnds_def, time = time_def)
+      # Attributes of inlined coordinates; those of external coordinates go
+      # with the external array
+      crd_atts <- crd$attributes
+      crd_atts <- if (is.null(values_def$external) && length(crd_atts)) crd_atts
+
+      cs_conv$coordinates(values_def, name = name, unit = crd$unit,
+                          boundaries = bnds_def, time = time_def,
+                          attributes = crd_atts)
+    }
+
+    has_external <- FALSE
+    axis_defs <- lapply(axes, function(ax) {
+      # All sets of coordinates of the axis, in the order of
+      # `coordinates_list` (which `write_external_coordinates()` relies on).
+      # The first set keeps the axis name for its external arrays; the other
+      # sets use their own name, which is then also recorded as the name of
+      # the set.
+      crds <- ax$coordinates_list
+      multi <- length(crds) > 1L
+      defs <- lapply(seq_along(crds), function(k)
+        coords_def(crds[[k]], if (k == 1L) ax$name else crds[[k]]$name,
+                   if (multi) crds[[k]]$name))
+
       abbr <- toupper(ax$abbreviation)
       if (!abbr %in% c('X', 'Y', 'Z', 'T', 'OTHER')) abbr <- 'OTHER'
       direction  <- cs_direction[[abbr]]
       if (abbr == 'OTHER') abbr <- ''
-      cs_conv$axis(list(coords_def), abbreviation = abbr, direction = direction)
+      cs_conv$axis(defs, abbreviation = abbr, direction = direction)
     })
 
     # Do we need the ref convention?
@@ -286,9 +325,12 @@ set_convention <- function(metadata, coord_sys, crs = NULL, ...) {
       atts <- ref_conv$register(atts)
     }
 
+    if (!is.null(geo))
+      atts <- geo$register(atts)
+
     # Group axes into separate CRS objects by axis category
     if (is.null(crs)) {
-      cs_conv$add_crs(axes = axis_defs[c(X_axis, Y_axis)], type = 'planar')
+      cs_conv$add_crs(axes = axis_defs[c(X_axis, Y_axis)], type = 'planar', geolocation = geo)
       cs_conv$add_crs(axes = axis_defs[which(ax_abbr == 'Z')], type = 'vertical')
       cs_conv$add_crs(axes = axis_defs[which(ax_abbr == 'T')], type = 'temporal')
       cs_conv$add_crs(axes = axis_defs[which(ax_abbr == 'OTHER')])
@@ -300,7 +342,7 @@ set_convention <- function(metadata, coord_sys, crs = NULL, ...) {
       }
 
       proj <- if (is.null(crs$spatial)) NULL else make_proj(crs$spatial)
-      cs_conv$add_crs(axes = axis_defs[c(X_axis, Y_axis)], type = 'planar', id = proj)
+      cs_conv$add_crs(axes = axis_defs[c(X_axis, Y_axis)], type = 'planar', id = proj, geolocation = geo)
       proj <- if (is.null(crs$vertical)) NULL else make_proj(crs$vertical)
       cs_conv$add_crs(axes = axis_defs[which(ax_abbr == 'Z')], type = 'vertical', id = proj)
       proj <- if (is.null(crs$temporal)) NULL else make_proj(crs$temporal)
@@ -319,4 +361,25 @@ set_convention <- function(metadata, coord_sys, crs = NULL, ...) {
   meta$attributes <- NULL # Remove any previous attributes
   meta$attributes <- atts
   meta
+}
+
+# The geolocation of coordinate system `cs` as a `zarr_convention_geolocation`
+# instance, or NULL. Geolocation data that has not yet been written is
+# referenced in group `group`, a path relative to the array.
+.geolocation_refs <- function(cs, group) {
+  data <- cs$geolocation_data
+  if (!length(data)) return(cs$geolocation)
+
+  refs <- if (is.null(cs$geolocation)) list() else cs$geolocation$as_list()
+  for (kind in names(data)) {
+    d <- data[[kind]]
+    crd <- function(c) {
+      out <- list(values = list(ref = list(node = paste0(group, '/', c$name))))
+      if (!is.null(c$bounds)) out$boundaries <- list(ref = list(node = paste0(group, '/', c$bounds$name)))
+      out
+    }
+    refs[[kind]] <- list(x = crd(d$x), y = crd(d$y))
+    if (!is.null(d$id)) refs[[kind]]$id <- d$id$as_list()
+  }
+  zarr_convention_geolocation$new(refs)
 }

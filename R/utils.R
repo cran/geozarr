@@ -22,7 +22,7 @@
     labels <- vapply(listed[is.na(matched)],
                      function(cv) cv$name %||% cv$uuid %||% cv$schema_url %||% cv$spec_url %||% '(unknown)',
                      character(1L), USE.NAMES = FALSE)
-    stop('Metadata lists unsupported conventions: ', paste(labels, collapse = ', '), call. = FALSE)
+    warning('Metadata lists unsupported conventions: ', paste(labels, collapse = ', '), call. = FALSE)
   }
 
   if ('cs' %in% matched) 'cs'
@@ -298,30 +298,146 @@ geozarr_options <- function(key, value) {
 # This internal function takes details and a `name` for a new array to be
 # created and the `location` being a group or location URI  where it needs to
 # go. It returns a geozarr_array instance. The ... contain convention
-# parameters.
+# parameters. Errors are raised before anything is written if the array has
+# no name but needs external arrays. External arrays are written before the
+# data, creating any missing groups.
 .create_gza <- function(meta, cs, data, name = NULL, location, ...) {
   # Set the convention
   meta <- set_convention(meta, cs, ...)
 
+  has_name <- !is.null(name) && nzchar(name)
   if (inherits(location, 'zarr_group')) {
     # Use a group in an existing zarr object
+    if (!has_name)
+      stop('A name must be given for an array in an existing Zarr group', call. = FALSE)
     if (!is.null(location$children[[name]]))
       stop('Group ', location$name, ' already has a node with name ', name, call. = FALSE)
     gza <- geozarr_array$new(name = name, metadata = meta, parent = location, coord_sys = cs)
   } else {
+    if (!has_name && .has_ref(meta$attributes[c('cs', 'geolocation')]))
+      stop('Single-array Zarr store cannot have external arrays for coordinates, boundaries or geolocation: give the array a name', call. = FALSE)
+
     # Create a new zarr object for the array
     z <- zarr::zarr$new(location)
-    if (is.null(name) || !nzchar(name)) {
+    if (!has_name) {
       # Single-array store
       gza <- geozarr_array$new(name = '', metadata = meta, parent = z, coord_sys = cs)
     } else {
       # Array in the root group
       zarr::zarr_group$new(name = '', parent = z)
       gza <- geozarr_array$new(name = name, metadata = meta, parent = z$root, coord_sys = cs)
-     }
+    }
   }
 
+  gza$write_external_coordinates(create_groups = TRUE)
   gza$write(data)
-  gza$write_external_coordinates()
   gza
+}
+
+# TRUE if `x`, a list from parsed JSON, holds a `ref` object anywhere.
+.has_ref <- function(x)
+  is.list(x) && (!is.null(x[["ref"]]) || any(vapply(x, .has_ref, logical(1L))))
+
+#' Resolve a JSON pointer
+#'
+#' @param doc A `list` as parsed from a JSON document.
+#' @param pointer Character string with a JSON pointer (RFC 6901), such as
+#'   "/attributes/crs/WGS84".
+#' @return The element of `doc` that `pointer` refers to, or `NULL` if it
+#'   does not resolve.
+#' @noRd
+.json_pointer <- function(doc, pointer) {
+  tokens <- strsplit(pointer, '/', fixed = TRUE)[[1L]][-1L]
+  tokens <- gsub('~0', '~', gsub('~1', '/', tokens, fixed = TRUE), fixed = TRUE)
+  for (tk in tokens) {
+    doc <- if (!is.list(doc)) NULL
+           else if (!is.null(names(doc))) doc[[tk]]
+           else if (grepl('^(0|[1-9][0-9]*)$', tk) && as.integer(tk) < length(doc)) doc[[as.integer(tk) + 1L]]
+           else NULL
+    if (is.null(doc)) break
+  }
+  doc
+}
+
+#' Rebase references to a different referencing node
+#'
+#' A `ref` object with a relative path is resolved from the node in whose
+#' metadata it is defined. To use the object from another node, the path from
+#' that node to the defining node is prefixed to the paths of all `ref`
+#' objects. References to another store are left unchanged.
+#' @param x A `list` as parsed from JSON, e.g. a `crs` object.
+#' @param prefix Character string. Relative path from the using node to the
+#'   node where `x` is defined.
+#' @return `x` with rebased `ref` objects.
+#' @noRd
+.rebase_refs <- function(x, prefix) {
+  if (!is.list(x)) return(x)
+  if (is.list(x$ref) && is.character(x$ref$node) && is.null(x$ref$uri))
+    x$ref$node <- paste(prefix, x$ref$node, sep = '/')
+  for (i in seq_along(x))
+    if (!identical(names(x)[i], 'ref'))
+      x[i] <- list(.rebase_refs(x[[i]], prefix))
+  x
+}
+
+#' Does metadata declare a convention?
+#' @param meta A `list` with the metadata of a Zarr node.
+#' @param name Character string. Name of the convention.
+#' @noRd
+.declares <- function(meta, name) {
+  name %in% vapply(meta$attributes$zarr_conventions, .match_convention, character(1L), USE.NAMES = FALSE)
+}
+
+#' First of a list of attribute lists to have a certain attribute
+#' @param sources A `list` of attribute lists, in order of precedence.
+#' @param name Character string. Name of the attribute.
+#' @return The value of the attribute, or `NULL` if not found.
+#' @noRd
+.first_att <- function(sources, name) {
+  for (s in sources)
+    if (!is.null(s[[name]])) return(s[[name]])
+  NULL
+}
+
+#' Sources of "spatial" attributes for an array in a multiscales level
+#'
+#' The nearest group above the array that holds a multiscales layout is
+#' searched for a level whose asset is the array itself, or the group that
+#' holds the array. The array takes part in the level when the "spatial"
+#' convention is declared on the multiscales group or on the array, and both
+#' names in "spatial:dimensions" are dimensions of the array. Other arrays in a
+#' level group, such as coordinate arrays, do not take part.
+#' @param name Character string. Name of the array.
+#' @param metadata A `list` with the metadata of the array.
+#' @param parent The parent node of the array.
+#' @return A `list` of attribute lists in order of precedence: the array, its
+#'   parent group unless that is the multiscales group, the layout object of
+#'   the level, the multiscales group. `NULL` when the array does not take part
+#'   in a multiscales level.
+#' @noRd
+.multiscales_spatial <- function(name, metadata, parent) {
+  if (metadata$node_type != 'array') return(NULL)
+
+  path <- name
+  node <- parent
+  while (inherits(node, 'zarr_group')) {
+    ms <- if (inherits(node, 'geozarr_group')) node$multiscales
+    if (!is.null(ms)) {
+      i <- match(c(path, if (grepl('/', path, fixed = TRUE)) sub('/[^/]*$', '', path)), ms$assets)
+      i <- i[!is.na(i)]
+      if (!length(i) || !(.declares(node$metadata, 'spatial') || .declares(metadata, 'spatial')))
+        return(NULL)
+
+      src <- Filter(Negate(is.null),
+                    list(metadata$attributes,
+                         if (!identical(parent, node)) parent$metadata$attributes,
+                         ms$layout[[i[1L]]],
+                         node$metadata$attributes))
+      dims <- .first_att(src, 'spatial:dimensions')
+      return(if (length(dims) == 2L && all(dims %in% unlist(metadata$dimension_names))) src)
+    }
+    path <- paste(node$name, path, sep = '/')
+    node <- node$parent
+  }
+  NULL
 }

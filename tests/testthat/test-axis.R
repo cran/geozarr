@@ -79,3 +79,63 @@ test_that("CoordinateSystemAxis subset()", {
   expect_identical(ax$subset("east", c(2L, 4L))$name, "east")
   expect_identical(ax$subset()$length, 18L)
 })
+
+# active_coordinates -----------------------------------------------------------
+
+member_axis <- function()
+  CoordinateSystemAxis$new("member", "OTHER",
+                           list(CoordinatesPacked$new("member", "OTHER", "1", c(1, 1), 3L),
+                                CoordinatesString$new("model", "OTHER", "1", c("a", "b", "c"))))
+
+test_that("active_coordinates selects a set by its name in an unnamed list", {
+  ax <- member_axis()
+  expect_identical(ax$active_coordinates$name, "member")
+  ax$active_coordinates <- "model"
+  expect_identical(ax$active_coordinates$name, "model")
+  expect_identical(ax$coordinates$values, c("a", "b", "c"))
+})
+
+test_that("active_coordinates warns on an unknown name and keeps the active set", {
+  ax <- member_axis()
+  ax$active_coordinates <- "model"
+  expect_warning(ax$active_coordinates <- "nope", 'Unknown coordinates "nope"')
+  expect_identical(ax$active_coordinates$name, "model")
+})
+
+test_that("copy() keeps the active coordinates", {
+  ax <- member_axis()
+  ax$active_coordinates <- "model"
+  expect_identical(ax$copy()$active_coordinates$name, "model")
+})
+
+test_that("subset() keeps the active coordinates", {
+  ax <- member_axis()
+  ax$active_coordinates <- "model"
+  sub <- ax$subset(rng = c(2L, 3L))
+  expect_identical(sub$active_coordinates$name, "model")
+  expect_identical(sub$coordinates$values, c("b", "c"))
+  expect_identical(sub$length, 2L)
+})
+
+test_that("subset() without a range keeps the active coordinates", {
+  ax <- member_axis()
+  ax$active_coordinates <- "model"
+  expect_identical(ax$subset()$active_coordinates$name, "model")
+})
+
+test_that("CoordinateSystemAxis$add_coordinates() adds a set of coordinates", {
+  ax <- CoordinateSystemAxis$new("y", "Y", CoordinatesIrregular$new("y_coordinates", "NORTH", "m", c(5, 6, 8)))
+  lbl <- CoordinatesString$new("labels", "OTHER", "-", c("p", "q", "r"))
+  expect_identical(ax$add_coordinates(lbl), ax)
+  expect_length(ax$coordinates_list, 2L)
+  expect_identical(ax$coordinates_list[["labels"]], lbl)
+  expect_identical(ax$coordinates$name, "y_coordinates") # The new set is not active
+})
+
+test_that("CoordinateSystemAxis$add_coordinates() validates its argument", {
+  ax <- CoordinateSystemAxis$new("y", "Y", CoordinatesIrregular$new("y_coordinates", "NORTH", "m", c(5, 6, 8)))
+  expect_error(ax$add_coordinates("labels"), "instance of the Coordinates class")
+  expect_error(ax$add_coordinates(CoordinatesString$new("labels", "OTHER", "-", c("p", "q"))), "same as the length")
+  expect_error(ax$add_coordinates(CoordinatesString$new("y_coordinates", "OTHER", "-", c("p", "q", "r"))), "already exist")
+  expect_length(ax$coordinates_list, 1L)
+})

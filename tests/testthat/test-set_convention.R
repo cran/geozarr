@@ -30,7 +30,7 @@ test_that("set_convention() uses spatial for north-up regular X/Y", {
 
 test_that("set_convention() spatial with a third, categorical axis", {
   band <- ax("band", "OTHER", CoordinatesString$new("b", "OTHER", "-", c("a", "b")))
-  m <- set_convention(list(), make_cs(regx(), regyd(), band))
+  m <- set_convention(list(shape = c(4, 3, 2)), make_cs(regx(), regyd(), band))
   expect_identical(conv_names(m), "spatial")
   expect_identical(m$dimension_names, c("x", "y", "band"))
 })
@@ -56,7 +56,8 @@ test_that("set_convention() falls back to cs when spatial does not apply", {
 # Existing attributes -----------------------------------------------------------
 
 test_that("set_convention() replaces previous convention attributes", {
-  meta <- list(dimension_names = c("a", "b"),
+  meta <- list(shape = c(4, 3),
+               dimension_names = c("a", "b"),
                attributes = list(title = "keep", `spatial:bbox` = 1:4, `proj:code` = "EPSG:1",
                                  cs = list(1), zarr_conventions = list(list(name = "old"))))
   m <- set_convention(meta, make_cs(regx(), regyu()))
@@ -115,7 +116,7 @@ cs_axes <- function(m) do.call(c, lapply(m$attributes$cs$crs, function(c) c$axes
 
 test_that("set_convention() cs groups axes by type", {
   t <- ax("t", "T", CoordinatesTime$new("t_c", "FUTURE", "days", "2020-01-01", values = c(0, 1)))
-  m <- set_convention(list(), make_cs(t, regyu(), regx()))
+  m <- set_convention(list(shape = c(2, 4, 3)), make_cs(t, regyu(), regx()))
   crs <- m$attributes$cs$crs
   expect_identical(vapply(crs, function(c) c$type, ""), c("planar", "temporal"))
   expect_identical(names(crs[[1L]]$axes), c("x", "y"))
@@ -148,6 +149,51 @@ test_that("set_convention() cs refers long irregular values to an external array
   expect_identical(cs_axes(m)$z$coordinates[[1L]]$values$external$ref$node, "../coords/z")
 })
 
+test_that("set_convention() cs includes attributes of regular coordinates", {
+  atts <- list(long_name = "Easting", standard_name = "projection_x_coordinate")
+  x <- ax("x", "X", CoordinatesPacked$new("x_c", "EAST", "m", c(15, 10), 4L, attributes = atts))
+  expect_identical(cs_axes(set_convention(list(), make_cs(x, regyu())))$x$coordinates[[1L]]$attributes, atts)
+})
+
+test_that("set_convention() cs includes attributes of explicit coordinates", {
+  atts <- list(long_name = "Height")
+  z <- ax("z", "Z", CoordinatesIrregular$new("z_c", "UP", "m", c(0, 10, 50), attributes = atts))
+  expect_identical(cs_axes(set_convention(list(), make_cs(regx(), regyu(), z)))$z$coordinates[[1L]]$attributes, atts)
+})
+
+test_that("set_convention() cs omits attributes of external coordinates", {
+  local_geozarr_option("max_explicit", 2L)
+  z <- ax("z", "Z", CoordinatesIrregular$new("z_c", "UP", "m", c(0, 10, 50), attributes = list(long_name = "Height")))
+  expect_null(cs_axes(set_convention(list(), make_cs(regx(), regyu(), z)))$z$coordinates[[1L]]$attributes)
+})
+
+test_that("set_convention() cs omits an empty attributes field", {
+  expect_false("attributes" %in% names(cs_axes(set_convention(list(), make_cs(regx(), regyu())))$x$coordinates[[1L]]))
+})
+
+test_that("set_convention() cs encodes all sets of coordinates of an axis", {
+  m <- ax("member", "OTHER", list(CoordinatesPacked$new("member", "OTHER", "1", c(1, 1), 3L),
+                                  CoordinatesString$new("model", "OTHER", "1", c("a", "b", "c")),
+                                  CoordinatesString$new("institute", "OTHER", "1", c("p", "q", "r"))))
+  crds <- cs_axes(set_convention(list(), make_cs(regx(), regyu(), m)))$member$coordinates
+  expect_length(crds, 3L)
+  expect_identical(vapply(crds, function(c) c$name, character(1L)), c("member", "model", "institute"))
+  expect_identical(crds[[1L]]$values, list(regular = c(1, 1)))
+  expect_identical(crds[[2L]]$values, list(explicit = list("a", "b", "c")))
+})
+
+test_that("set_convention() cs refers additional sets of coordinates to arrays of their own name", {
+  local_geozarr_option("max_explicit", 2L)
+  m <- ax("member", "OTHER", list(CoordinatesPacked$new("member", "OTHER", "1", c(1, 1), 3L),
+                                  CoordinatesString$new("model", "OTHER", "1", c("a", "b", "c"))))
+  crds <- cs_axes(set_convention(list(), make_cs(regx(), regyu(), m), external_group = "../coords"))$member$coordinates
+  expect_identical(crds[[2L]]$values$external$ref$node, "../coords/model")
+})
+
+test_that("set_convention() cs does not name a single set of coordinates", {
+  expect_null(cs_axes(set_convention(list(), make_cs(regx(), regyu())))$x$coordinates[[1L]]$name)
+})
+
 test_that("set_convention() cs encodes boundaries", {
   zp <- ax("z", "Z", CoordinatesIrregular$new("z_c", "UP", "m", c(0, 10, 50), bounds = c(-1, 1)))
   expect_identical(cs_axes(set_convention(list(), make_cs(regx(), regyu(), zp)))$z$coordinates[[1L]]$boundaries,
@@ -175,7 +221,7 @@ test_that("set_convention() cs encodes 'OTHER' axes without abbreviation", {
   band <- ax("band", "OTHER", CoordinatesString$new("b", "OTHER", "-", c("a", "b")))
   m <- set_convention(list(), make_cs(regx(), regyu(), t, band))
   crs <- m$attributes$cs$crs
-  expect_identical(crs[[3L]]$type, "unknown")
+  expect_identical(crs[[3L]]$type, "undefined")
   expect_identical(crs[[3L]]$axes$band$abbreviation, "")
   expect_identical(crs[[3L]]$axes$band$direction, "OTHER")
   expect_identical(crs[[3L]]$axes$band$coordinates[[1L]]$values, list(explicit = list("a", "b")))

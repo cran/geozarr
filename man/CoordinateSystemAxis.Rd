@@ -24,6 +24,13 @@ thus not with the axis.
 
     \item{\code{coordinates}}{(read-only) Retrieve the currently active coordinates.}
 
+    \item{\code{active_coordinates}}{Set or retrieve the name of the coordinate set
+to use with the axis for printing to the console as well as for
+processing methods such as \code{subset()}. When setting, provide the name
+of the requested coordinates. If the name is not known a warning will
+be generated and the currently active coordinates stay active. When
+retrieving, the \code{Coordinates} instance that is currently active.}
+
     \item{\code{length}}{(read-only) Retrieve the length of the axis.}
   }
   \if{html}{\out{</div>}}
@@ -32,6 +39,7 @@ thus not with the axis.
 \subsection{Public methods}{
   \itemize{
     \item \href{#method-CoordinateSystemAxis-initialize}{\code{CoordinateSystemAxis$new()}}
+    \item \href{#method-CoordinateSystemAxis-add_coordinates}{\code{CoordinateSystemAxis$add_coordinates()}}
     \item \href{#method-CoordinateSystemAxis-print}{\code{CoordinateSystemAxis$print()}}
     \item \href{#method-CoordinateSystemAxis-brief}{\code{CoordinateSystemAxis$brief()}}
     \item \href{#method-CoordinateSystemAxis-copy}{\code{CoordinateSystemAxis$copy()}}
@@ -80,6 +88,31 @@ list will be made active.}
   }
   \subsection{Returns}{
     An instance of this class or an error.
+  }
+}
+
+\if{html}{\out{<hr>}}
+\if{html}{\out{<a id="method-CoordinateSystemAxis-add_coordinates"></a>}}
+\if{latex}{\out{\hypertarget{method-CoordinateSystemAxis-add_coordinates}{}}}
+\subsection{\code{CoordinateSystemAxis$add_coordinates()}}{
+  Add a set of coordinates to the axis. The new coordinates are
+not made active.
+  \subsection{Usage}{
+    \if{html}{\out{<div class="r">}}
+    \preformatted{CoordinateSystemAxis$add_coordinates(coordinates)}
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Arguments}{
+    \if{html}{\out{<div class="arguments">}}
+    \describe{
+      \item{\code{coordinates}}{An instance of the \code{Coordinates} class, or any of its
+descendants, with the same length as the axis and a name that is not
+yet used by the coordinates of the axis.}
+    }
+    \if{html}{\out{</div>}}
+  }
+  \subsection{Returns}{
+    Self, invisibly.
   }
 }
 

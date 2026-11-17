@@ -243,7 +243,7 @@ test_that("cs metadata errors are reported", {
                'missing the required "node"')
   expect_error(open_zarr(store_with(bad(list(values = list(external = list(ref = list(node = "../y", attribute = "/a"))))))),
                "attribute reference which is not supported")
-  expect_error(open_zarr(store_with(bad(list(values = list(external = list(ref = list(node = "y"))))))),
+  expect_error(open_zarr(store_with(bad(list(values = list(external = list(ref = list(node = "/y"))))))),
                "relative path")
   expect_error(open_zarr(store_with(bad(list(values = list(external = list(ref = list(node = "/y", uri = "s3://b/s.zarr"))))))),
                "Not yet supported")
@@ -289,6 +289,17 @@ test_that("XArray dimension without coordinates gets an ordinal axis", {
   axes <- open_zarr(xarray_store())[["/ens"]]$coordinate_system$axes
   expect_s3_class(axes[[2L]]$coordinates, "CoordinatesOrdinal")
   expect_identical(axes[[2L]]$coordinates$values, 0:1)
+})
+
+test_that("XArray string dimension coordinates become string coordinates", {
+  fn <- tempfile(fileext = ".zarr")
+  root <- create_zarr(fn)[["/"]]
+  write_plain_array(root, c(15, 25, 35, 45), "lon", "lon")
+  write_plain_array(root, c("model_a", "model_b"), "member", "member")
+  write_plain_array(root, array(as.numeric(1:8), c(4, 2)), "ens", c("lon", "member"), list(coordinates = "lon member"))
+  crd <- open_zarr(fn)[["/ens"]]$coordinate_system$axes$member$coordinates
+  expect_s3_class(crd, "CoordinatesString")
+  expect_identical(crd$values, c("model_a", "model_b"))
 })
 
 test_that("XArray arrays can be subset", {
@@ -460,4 +471,59 @@ test_that("subset() takes a spatial CRS from the parent group", {
 test_that("subset() of a single-array spatial store without CRS", {
   s <- as_geozarr(spatial_arr())$subset(X = c(20, 40))
   expect_null(s$metadata$attributes[["proj:code"]])
+})
+
+# Adding coordinates ------------------------------------------------------------
+
+labels <- function(nm = "labels") CoordinatesString$new(nm, "OTHER", "-", c("p", "q", "r"))
+
+new_cs_array <- function(path = NULL) {
+  z <- if (is.null(path)) create_zarr() else create_zarr(path)
+  create_geozarr_array("a", z$add_group("/", "g"),
+                       list(x = list(coordinates = c(15, 25, 35)), y = list(coordinates = c(5, 6, 8))), "int16")
+}
+
+test_that("geozarr_array$add_coordinates() adds inline coordinates to the metadata", {
+  gza <- new_cs_array()
+  expect_identical(gza$add_coordinates("y", labels()), gza)
+  expect_length(gza$coordinate_system$axes$y$coordinates_list, 2L)
+})
+
+test_that("geozarr_array$add_coordinates() persists the coordinates", {
+  fn <- tempfile(fileext = ".zarr")
+  on.exit(unlink(fn, recursive = TRUE))
+  gza <- new_cs_array(fn)
+  gza$add_coordinates("y", labels())
+
+  re <- open_zarr(fn)[["/g/a"]]
+  lst <- re$coordinate_system$axes$y$coordinates_list
+  expect_length(lst, 2L)
+  expect_identical(lst[[2L]]$values, c("p", "q", "r"))
+})
+
+test_that("geozarr_array$add_coordinates() writes long coordinates to an external array", {
+  local_geozarr_option("max_explicit", 2L)
+  fn <- tempfile(fileext = ".zarr")
+  on.exit(unlink(fn, recursive = TRUE), add = TRUE)
+  gza <- new_cs_array(fn)
+  gza$add_coordinates("y", labels())
+
+  expect_true("/g/labels" %in% open_zarr(fn)$arrays)
+  re <- open_zarr(fn)[["/g/a"]]
+  expect_identical(re$coordinate_system$axes$y$coordinates_list[[2L]]$values, c("p", "q", "r"))
+})
+
+test_that("geozarr_array$add_coordinates() validates its arguments", {
+  gza <- new_cs_array()
+  expect_error(gza$add_coordinates("z", labels()), 'Axis "z" is not in')
+  expect_error(gza$add_coordinates("y", CoordinatesString$new("l", "OTHER", "-", c("p", "q"))), "same as the length")
+  gza$add_coordinates("y", labels())
+  expect_error(gza$add_coordinates("y", labels()), "already exist")
+  expect_length(gza$coordinate_system$axes$y$coordinates_list, 2L)
+})
+
+test_that("geozarr_array$add_coordinates() requires the cs convention", {
+  gza <- create_geozarr_array("a", create_zarr()$add_group("/", "g"),
+                              list(x = list(coordinates = c(15, 25, 35)), y = list(coordinates = c(75, 65, 55))), "int16")
+  expect_error(gza$add_coordinates("y", labels()), '"cs" convention')
 })

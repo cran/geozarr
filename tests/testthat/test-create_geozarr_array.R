@@ -151,3 +151,177 @@ test_that("create_geozarr_array() puts units and dimension names on the external
   expect_identical(s$z[["/g/y"]]$attribute("units"), "m")
   expect_null(s$z[["/g"]]$metadata$dimension_names)
 })
+
+test_that("write_external_coordinates() puts coordinate attributes on the external array", {
+  local_geozarr_option("max_explicit", 2L)
+  s <- new_group()
+  x <- CoordinateSystemAxis$new("x", "X", CoordinatesPacked$new("x", "EAST", "m", c(15, 10), 3L))
+  y <- CoordinateSystemAxis$new("y", "Y", CoordinatesIrregular$new("y", "NORTH", "m", Yu,
+                                                                   attributes = list(long_name = "Northing")))
+  cs <- CoordinateSystem$new("cs", list(x = x, y = y))
+  meta <- set_convention(define_array("float64", c(3L, 3L))$metadata(), cs)
+  geozarr_array$new("a", meta, s$grp, cs)$write_external_coordinates()
+  expect_identical(s$z[["/g/y"]]$attribute("long_name"), "Northing")
+  expect_identical(s$z[["/g/y"]]$attribute("units"), "m")
+})
+
+test_that("write_external_coordinates() writes additional sets of coordinates", {
+  local_geozarr_option("max_explicit", 2L)
+  s <- new_group()
+  x <- CoordinateSystemAxis$new("x", "X", CoordinatesPacked$new("x", "EAST", "m", c(15, 10), 3L))
+  y <- CoordinateSystemAxis$new("y", "Y", list(CoordinatesPacked$new("y", "NORTH", "m", c(5, 1), 3L),
+                                               CoordinatesString$new("y_label", "OTHER", "1", c("a", "b", "c"))))
+  cs <- CoordinateSystem$new("cs", list(x = x, y = y))
+  meta <- set_convention(define_array("float64", c(3L, 3L))$metadata(), cs)
+  geozarr_array$new("a", meta, s$grp, cs)$write_external_coordinates()
+  expect_identical(s$z[["/g/y_label"]][], c("a", "b", "c"))
+})
+
+# subset(): external arrays ------------------------------------------------------
+
+Y4 <- c(5, 6, 8, 11)  # irregular, long enough to stay external after subsetting
+cs_axes <- function(m) do.call(c, lapply(m$attributes$cs$crs, function(c) c$axes))
+
+subset_source <- function(coord_group = NULL) {
+  s <- new_group()
+  if (identical(coord_group, "../coords")) s$z$add_group("/g", "coords")
+  if (identical(coord_group, "../../coords")) s$z$add_group("/", "coords")
+  conv <- if (!is.null(coord_group)) list(.convention = list(coordinate_group = coord_group))
+  gza <- create_geozarr_array("a", s$grp, c(list(x = list(coordinates = X), y = list(coordinates = Y4)), conv),
+                              "float64")
+  c(s, list(gza = gza))
+}
+
+test_that("subset() puts external arrays in the group of the source, relative to the array", {
+  local_geozarr_option("max_explicit", 2L)
+  src <- subset_source("../coords")
+  sub <- src$gza$subset(y = c(5.5, 12), .name = "s")
+  expect_identical(cs_axes(sub$metadata)$y$coordinates[[1L]]$values$external$ref$node, "../coords/y")
+  expect_identical(sub$zarr[["/coords/y"]][], c(6, 8, 11))
+})
+
+test_that("subset() falls back to the group of the new array above the root", {
+  local_geozarr_option("max_explicit", 2L)
+  src <- subset_source("../../coords")
+  sub <- src$gza$subset(y = c(5.5, 12), .name = "s")
+  expect_identical(cs_axes(sub$metadata)$y$coordinates[[1L]]$values$external$ref$node, "../y")
+  expect_identical(sub$zarr[["/y"]][], c(6, 8, 11))
+})
+
+test_that("subset() keeps a group above its own group when the target is deep enough", {
+  local_geozarr_option("max_explicit", 2L)
+  src <- subset_source("../../coords")
+  z2 <- create_zarr()
+  z2$add_group("/", "h")
+  src$gza$subset(y = c(5.5, 12), .name = "s", .location = z2[["/h"]])
+  expect_identical(z2[["/coords/y"]][], c(6, 8, 11))
+})
+
+test_that("subset() takes the external group from argument .external_group", {
+  local_geozarr_option("max_explicit", 2L)
+  src <- subset_source()
+  sub <- src$gza$subset(y = c(5.5, 12), .name = "s", .location = src$grp, .external_group = "../sub_coords")
+  expect_identical(src$z[["/g/sub_coords/y"]][], c(6, 8, 11))
+})
+
+test_that("subset() into the store of the source can collide with its external arrays", {
+  local_geozarr_option("max_explicit", 2L)
+  src <- subset_source()
+  expect_error(src$gza$subset(y = c(5.5, 12), .name = "s", .location = src$grp),
+               'Incompatible external array "y"')
+})
+
+test_that("subset() without .name errors when external arrays are needed", {
+  local_geozarr_option("max_explicit", 2L)
+  expect_error(subset_source()$gza$subset(y = c(5.5, 12)), "Single-array Zarr store cannot have external arrays")
+})
+
+test_that("subset() without .name works when no external arrays are needed", {
+  sub <- subset_source()$gza$subset(y = c(5.5, 12))
+  expect_identical(sub$shape, c(3L, 3L))
+})
+
+test_that("subset() into an existing group requires .name", {
+  src <- subset_source()
+  expect_error(src$gza$subset(y = c(5.5, 12), .location = src$grp),
+               "A name must be given for an array in an existing Zarr group")
+})
+
+test_that("create_geozarr_array() sets a spatial CRS", {
+  gza <- create_geozarr_array("a", new_group()$grp,
+                              list(x = list(coordinates = X), y = list(coordinates = Yd)), "int16",
+                              crs = list(spatial = list(code = "EPSG:4326")))
+  expect_identical(gza$metadata$attributes[["proj:code"]], "EPSG:4326")
+})
+
+test_that("create_geozarr_array() sets a compound CRS", {
+  gza <- create_geozarr_array("a", new_group()$grp,
+                              list(x = list(coordinates = X), y = list(coordinates = Yu)), "int16",
+                              crs = list(compound = list(code = "EPSG:4326")))
+  expect_identical(gza$metadata$attributes$cs$id, list(`proj:code` = "EPSG:4326"))
+})
+
+test_that("create_geozarr_array() has no CRS by default", {
+  gza <- create_geozarr_array("a", new_group()$grp,
+                              list(x = list(coordinates = X), y = list(coordinates = Yd)), "int16")
+  expect_null(gza$metadata$attributes[["proj:code"]])
+})
+
+test_that("create_geozarr_array() validates the CRS", {
+  expect_error(create_geozarr_array("a", new_group()$grp,
+                                    list(x = list(coordinates = X), y = list(coordinates = Yd)), "int16",
+                                    crs = list(spatial = list(foo = 1))),
+               "formatted CRS")
+})
+
+test_that("create_geozarr_array() sets axis attributes on packed coordinates", {
+  gza <- create_geozarr_array("a", new_group()$grp,
+                              list(x = list(coordinates = X, unit = "m", attributes = list(long_name = "Easting")),
+                                   y = list(coordinates = Yu, unit = "m")), "float64")
+  expect_identical(gza$coordinate_system$axes$x$coordinates$attributes, list(long_name = "Easting"))
+  expect_identical(gza$metadata$attributes$cs$crs[[1L]]$axes$x$coordinates[[1L]]$attributes,
+                   list(long_name = "Easting"))
+})
+
+test_that("create_geozarr_array() sets axis attributes on explicit coordinates", {
+  gza <- create_geozarr_array("a", new_group()$grp,
+                              list(x = list(coordinates = X, unit = "m"),
+                                   y = list(coordinates = Yu, unit = "m",
+                                            attributes = list(long_name = "Northing", standard_name = "projection_y_coordinate"))),
+                              "float64")
+  expect_identical(gza$metadata$attributes$cs$crs[[1L]]$axes$y$coordinates[[1L]]$attributes$long_name, "Northing")
+  expect_identical(gza$metadata$attributes$cs$crs[[1L]]$axes$y$coordinates[[1L]]$attributes$standard_name,
+                   "projection_y_coordinate")
+})
+
+test_that("create_geozarr_array() has no axis attributes by default", {
+  gza <- create_geozarr_array("a", new_group()$grp,
+                              list(x = list(coordinates = X, unit = "m"), y = list(coordinates = Yu, unit = "m")), "float64")
+  expect_length(gza$coordinate_system$axes$y$coordinates$attributes, 0L)
+})
+
+test_that("create_geozarr_array() puts axis attributes on external coordinate arrays", {
+  local_geozarr_option("max_explicit", 2L)
+  s <- new_group()
+  create_geozarr_array("a", s$grp,
+                       list(x = list(coordinates = X, unit = "m"),
+                            y = list(coordinates = Yu, unit = "m", attributes = list(long_name = "Northing"))), "float64")
+  expect_identical(s$z[["/g/y"]]$attribute("long_name"), "Northing")
+})
+
+test_that("create_geozarr_array() sets axis attributes on time and string coordinates", {
+  gza <- create_geozarr_array("a", new_group()$grp,
+                              list(x = list(coordinates = X, unit = "m"), y = list(coordinates = Yu, unit = "m"),
+                                   t = list(coordinates = c(0, 1, 5), abbreviation = "T", unit = "days", calendar = "standard",
+                                            epoch = "2000-01-01", attributes = list(long_name = "time")),
+                                   s = list(coordinates = c("a", "b", "c"), attributes = list(long_name = "site"))),
+                              "float64")
+  expect_identical(gza$coordinate_system$axes$t$coordinates$attributes, list(long_name = "time"))
+  expect_identical(gza$coordinate_system$axes$s$coordinates$attributes, list(long_name = "site"))
+})
+
+test_that("create_geozarr_array() validates axis attributes", {
+  g <- new_group()$grp
+  expect_error(create_geozarr_array("a", g, list(x = list(coordinates = X, attributes = "a")), "int8"), "named list")
+  expect_error(create_geozarr_array("a", g, list(x = list(coordinates = X, attributes = list(1))), "int8"), "named list")
+})

@@ -1,3 +1,46 @@
+# geozarr 0.4.0
+
+* Geolocation convention v2.0.0 supported:
+  * `x` and `y` hold `values` and optional `boundaries` references. `CoordinateSystem$set_geolocation()` has new arguments `x_bounds`, `y_bounds`, `bounds_dims` and `bounds_names` for the cell vertices, which `geozarr_array$write_geolocation()` writes and `geozarr_array$geolocation()` returns.
+  * New class `zarr_convention_geolocation` implements the convention. `zarr_convention_cs$add_crs()` takes an instance of it for its `geolocation` argument.
+  * `CoordinateSystem` has a `geolocation` field linking geolocation arrays to its X and Y axes. It is read from and written to the `cs` and `spatial` conventions. New method `geozarr_array$geolocation()` resolves the geolocation arrays.
+  * New method `CoordinateSystem$set_geolocation()` sets geolocation data, such as 2-D longitude and latitude arrays, for the X and Y axes. `set_convention()` references the data in the group given by its new `geolocation_group` argument (default: `external_group`), and new method `geozarr_array$write_geolocation()` writes the arrays, or verifies arrays already written for another array, and then frees the data.
+  * `geozarr_array$write_geolocation()` and `$write_external_coordinates()` have a new argument `create_groups` (default `FALSE`) to create missing groups on the path to the external arrays.
+* Multiscales convention v0.1 supported:
+  * New class `zarr_convention_multiscales` implements the convention. `geozarr_group` has a new field `multiscales` giving the layout of the group. Arrays in the levels of a multiscales group that uses the "spatial" convention are opened as `geozarr_array`.
+  * The specification is ambiguous or silent on several points; this implementation reads it as follows:
+    * An `asset` may be a group or an array; which one follows from the node, not from the attributes. An array takes part in a level when the "spatial" convention is declared on the multiscales group or on the array, and both names in `spatial:dimensions` are among its `dimension_names`. Other arrays in a level group, such as coordinate arrays, are left as plain Zarr arrays.
+    * `scale` is relative to the level in `derived_from`, not to the full-resolution level. `cumulative_scale()` gives the product along `derived_from` to the root. A `transform` on a level without `derived_from` is ignored there.
+    * `scale` and `translation` are never used for georeferencing, because the specification does not define the dimensions they apply to, their order, or the units of `translation`. The grid of a level comes from its `spatial:transform`.
+    * `spatial:` and `proj:` attributes are taken, in order, from the array, its parent group, the layout object of the level, and the multiscales group. Attributes of the multiscales group thus reach arrays that are not its direct children, and a `spatial:transform` on the multiscales group never overrides that of a level. Arrays in a level need not declare a convention themselves.
+    * The multiscales layout takes precedence over XArray-style coordinate arrays in a level group.
+  * Stricter than the schema:
+    * The layout is rejected when an asset is listed more than once, when a `derived_from` does not name an asset in the layout, when the `derived_from` references form a cycle, or when `scale` arrays differ in length. A rejected `multiscales` attribute is ignored with a warning; the store still opens.
+    * A `scale` that is not the ratio of the cell sizes in the `spatial:transform` of a level and its source gives a warning on reading and an error in `add_level()`.
+    * The convention must be declared in `zarr_conventions`. Stores citing the `v1` tags are not recognised.
+  * Writing with `add_level()`:
+    * A level must be added after its source. `scale` is required with `derived_from`, `translation` is always zero, and no `transform` is written for a level without `derived_from`.
+    * Unknown properties of layout objects are preserved; other properties of the `multiscales` object are not.
+  * Not supported:
+    * Levels without their own `spatial:transform`. Such a level takes the `spatial:transform` of the multiscales group when there is one, which is wrong for all but the full-resolution level; otherwise opening the store fails.
+    * A multiscales group without the "spatial" convention: the layout is available but the arrays are plain Zarr arrays.
+    * A non-zero `translation`.
+* `geozarr_array`:
+  * Method `write_external_coordinates()` writes the attributes of the coordinates to the external array.
+  * New method `set_geolocation()` to set geolocation arrays on an array that uses the `cs` convention after it has been created: it sets the geolocation on the coordinate system, updates the metadata, writes the geolocation arrays and saves the array.
+  * New method `add_coordinates()` to add a set of coordinates, such as labels, to an axis of an array that uses the `cs` convention, with new method `CoordinateSystemAxis$add_coordinates()`.
+  * Method `subset()` writes external coordinate and boundary arrays to the same group, relative to the array, as the source array, or to the group given by new argument `.external_group`. It falls back to the group of the new array when the source group would lie above the root of the store, or is in another store.
+  * Method `hierarchy()` will show scalar axes.
+* `create_geozarr_array()` has a new optional `attributes` element in the description of each axis, to set the attributes of the coordinates of the axis. They are stored inline with the coordinates in the `cs` attributes or, for external coordinates, with the external array.
+* `create_geozarr_array()` has a new optional argument `crs` to set the CRS of the new array, in the format of the `crs` argument of `set_convention()`.
+* `set_convention()` writes the attributes of inlined (`regular` or `explicit`) coordinates to the `attributes` field of the `coordinates` construct of the `cs` convention.
+* `set_convention()` writes all sets of coordinates of an axis to the `cs` convention, not only the active set. When an axis has more than one set, each set is named; additional sets refer to external arrays by their own name.
+* Creating an array without a name (a single-array store) that needs external arrays raises an error before anything is written. External arrays are written before the data of a new array, creating any missing groups.
+* CRS objects defined in a group and referenced from arrays (`cs` convention) are resolved, including JSON pointers into the group metadata. References inside a shared CRS object, such as external coordinate values and geolocation arrays, are resolved relative to the group.
+* Implementation of convention `cs` now supports multiple coordinate sets per axis.
+* Fix potential error in selecting attributes to display.
+* Unsupported conventions throw a warning instead of an error.
+
 # geozarr 0.3.0
 
 * Implements the new API from `zarr` 1.0.0.
